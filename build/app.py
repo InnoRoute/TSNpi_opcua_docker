@@ -1,52 +1,43 @@
-from flask import Flask, request, jsonify
-from opcua import Client
-from opcua import ua
+import sys
+sys.path.insert(0, "..")
 import time
+import os
 
+from opcua import ua, Server
 
-app = Flask(__name__)
+motor_speed=0
 
-@app.route('/get',  methods=['POST'])
-def get():
-	request_data=request.get_json(force=True)
-	client=request_data["CLIENT"]
-	path=request_data["PATH"]
-	print(client)
-	print(path)
-	try:
-		client = Client(client)
-		client.connect()
-		root = client.get_root_node()
-		resp=str(root.get_child(path).get_value())
-		client.disconnect()
-		return jsonify({'status':'OK','msg':"","response":str(resp)}),200
-	except Exception as e:
-		return jsonify({'status':'ERROR','msg':str(e)}),401
+def set_speed(parent,new_speed):
+	global motor_speed
+	motor_speed=new_speed.Value
+	print("Set new motor speed: "+str(motor_speed))
+	root.get_child(["0:Objects", "0:PiccoloNode", "0:motor", "0:speed"]).set_value(motor_speed)
+#	os.popen("docker-compose "+name+" start")
+	return ""
 
-@app.route('/call',  methods=['POST'])
-def call():
-	request_data=request.get_json(force=True)
-	client=request_data["CLIENT"]
-	path=request_data["PATH"]
-	method=request_data["METHOD"]
-	print(client)
-	print(path)
-	try:
-		client = Client(client)
-		client.connect()
-		root = client.get_root_node()
+if __name__ == "__main__":
+
+    # setup our server
+    server = Server()
+    server.set_endpoint("opc.tcp://0.0.0.0:4840/piccolo/node/")
+#    server.set_endpoint("http://0.0.0.0:4840/freeopcua/server/")
+    
+    server.import_xml("data2.xml");
 		
-		resp=str(root.get_child(path).call_method(method,request_data["PARAM1"] ))
-		client.disconnect()
-		return jsonify({'status':'OK','msg':"","response":str(resp)}),200
-	except Exception as e:
-		return jsonify({'status':'ERROR','msg':str(e)}),401
-	
-	
-if __name__=="__main__":
-    app.run(host='0.0.0.0',port=5001)
+    uri = "http://opcfoundation.org/UA/SecurityPolicy#None"
+    idx = server.register_namespace(uri)
+
+    objects = server.get_objects_node()
+    root = server.get_root_node()
+    server.link_method(root.get_child(["0:Objects", "0:PiccoloNode", "0:motor", "0:set_speed"]),set_speed)
+    server.start()
     
-    
-    
-    
-    
+    try:
+        count = 0
+        while True:
+           time.sleep(1)
+#           root.get_child(["0:Objects", "0:PiccoloNode", "0:resources_available", "0:memory"]).set_value(int(os.popen("cat /proc/meminfo | grep MemFree | sed -e 's/[[:space:]]\+/ /g' | cut -d ' ' -f2").read()))
+
+    finally:
+        #close connection, remove subcsriptions, etc
+        server.stop()
